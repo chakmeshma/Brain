@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_relative_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <android.support.v7.widget.AppCompatTextView
+        android:id="@+id/debug_textview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#FF0000"
+        tools:text="60" />
+
+    <android.support.v7.widget.AppCompatTextView
+        android:id="@+id/debug2_textview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_toRightOf="@id/debug_textview"
+        android:layout_marginLeft="20px"
+        android:textColor="#FF0000"
+        tools:text="60" />
+
+    <RelativeLayout
+        android:id="@+id/loading_relative_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/colorLoadingBackground">
+
+        <net.chakmeshma.bees.CustomAppCompatImageView
+            android:id="@+id/loading_splash_imageview"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_centerHorizontal="true"
+            android:layout_centerVertical="true"
+            app:refHeight="0.3"
+            app:refWidth="0.3"
+            app:srcCompat="@drawable/ic_abeille_ruche_bee" />
+
+        <ProgressBar
+            android:id="@+id/loading_progressbar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="@dimen/progressBarWidth"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/loading_splash_imageview"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="10dp"
+            android:max="256"
+            android:progress="0"
+            android:visibility="visible" />
+
+    </RelativeLayout>
+    <!--<com.github.mikephil.charting.charts.BarChart-->
+    <!--android:id="@+id/zps_bar_char"-->
+    <!--android:layout_width="match_parent"-->
+    <!--android:layout_height="match_parent"-->
+    <!--android:background="@color/colorWhite" />-->
+</RelativeLayout>
