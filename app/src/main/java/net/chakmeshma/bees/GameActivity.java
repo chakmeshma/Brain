@@ -21,7 +21,9 @@ import com.github.mikephil.charting.components.Description;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
+import com.github.mikephil.charting.formatter.IValueFormatter;
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet;
+import com.github.mikephil.charting.utils.ViewPortHandler;
 
 import net.chakmeshma.brutengine.development.DebugUtilities;
 import net.chakmeshma.brutengine.development.exceptions.InitializationException;
@@ -545,18 +547,33 @@ public class GameActivity extends AppCompatActivity {
             for (LineDataSet lineDataSet : lineDataSets) {
 //                lineDataSet.setCircleColor(Color.parseColor("#000000"));
 //                lineDataSet.setCircleRadius(3.0f);
+
                 lineDataSet.setDrawCircles(false);
                 //lineDataSet.setDrawCircleHole(false);
 
                 switch (i) {
                     case 0:
                         lineDataSet.setColors(Color.parseColor("#00CC00"));
+                        lineDataSet.setDrawValues(false);
                         break;
                     case 1:
                         lineDataSet.setColors(Color.parseColor("#000066"));
+                        lineDataSet.setDrawValues(false);
                         break;
                     case 2:
                         lineDataSet.setColors(Color.parseColor("#FF0000"));
+                        lineDataSet.setDrawValues(true);
+                        lineDataSet.setValueTextColor(Color.parseColor("#FF0000"));
+                        lineDataSet.setValueTextSize(GameActivity.getScaleReferenceNumber() / 100.0f);
+                        lineDataSet.setValueFormatter(new IValueFormatter() {
+                            @Override
+                            public String getFormattedValue(float value, Entry entry, int dataSetIndex, ViewPortHandler viewPortHandler) {
+                                if (value == 0.0f)
+                                    return "";
+                                else
+                                    return String.format("%dfps", Math.round(1000.0f / value));
+                            }
+                        });
                         break;
                 }
 
@@ -566,7 +583,6 @@ public class GameActivity extends AppCompatActivity {
             }
 
             LineData lineData = new LineData(Arrays.<ILineDataSet>asList(lineDataSets));
-            lineData.setDrawValues(false);
 
             chart.setData(lineData);
 
@@ -584,7 +600,7 @@ public class GameActivity extends AppCompatActivity {
 
     private Thread obtainChartThread() {
         return new Thread(new Runnable() {
-            private long msSleepInterval = 3000L;
+            private long msSleepInterval = 2000L;
 
             @Override
             public void run() {
