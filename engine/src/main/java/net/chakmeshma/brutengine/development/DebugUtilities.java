@@ -13,11 +13,8 @@ import static android.opengl.GLES20.glGetError;
 
 public final class DebugUtilities {
     private static final String warningTag = "MY_WARNING_TAG";
-    private static final Object timestampsStackLock = new Object();
-    private static long[] timestampsStack = new long[10240];
-    private static int timestampsStackPointer = 0;
-    private static Thread timestampCaptureThread;
 
+    //region checkAssertGLError
     public static void checkAssertGLError() {
         _checkAssertGLError(null);
     }
@@ -49,7 +46,9 @@ public final class DebugUtilities {
             logWarning(dummyException);
         }
     }
+    //endregion
 
+    //region logWarning
     public static void logWarning(String warningMessage) {
         Log.w(warningTag, warningMessage);
     }
@@ -57,94 +56,148 @@ public final class DebugUtilities {
     public static void logWarning(Exception warningException) {
         Log.w(warningTag, warningException);
     }
+    //endregion
 
-    public static long popTimestamp() throws InvalidStackOperationException {
-        long value;
+    public final static class FramerateCapture {
+        private static final Object timestampsStackLock = new Object();
+        private static final Object threadRunningMonitor = new Object();
+        private static final Object captureThreadRunMonitor = new Object();
+        private static final int stackCapacity = 10240;
+        private static long[] timestampsStack;
+        private static int timestampsStackPointer = 0;
+        private static Thread timestampCaptureThread;
+        private static boolean threadRunning = false;
+        private static long lastReportedTimestamp = 0L;
 
-        synchronized (timestampsStackLock) {
-            if (timestampsStackPointer == 0)
-                throw new InvalidStackOperationException("empty stack!");
-
-            value = timestampsStack[--timestampsStackPointer];
+        private static void assertStackAllocated() {
+            if (timestampsStack == null) {
+                timestampsStack = new long[stackCapacity];
+            }
         }
 
-        return value;
-    }
+        public static long popTimestamp() throws InvalidStackOperationException {
+            assertStackAllocated();
 
-    public static void clearTimestamps() {
-        synchronized (timestampsStackLock) {
-            timestampsStackPointer = 0;
+            long value;
+
+            synchronized (timestampsStackLock) {
+                if (timestampsStackPointer == 0)
+                    throw new InvalidStackOperationException("empty stack!");
+
+                value = timestampsStack[--timestampsStackPointer];
+            }
+
+            return value;
         }
-    }
 
-    public static long[] popTimestampsAll(boolean timeRightOrder) throws InvalidStackOperationException {
-        long[] values;
+        public static void clearTimestamps() {
+            synchronized (timestampsStackLock) {
+                timestampsStackPointer = 0;
+            }
+        }
 
-        synchronized (timestampsStackLock) {
-            if (timestampsStackPointer == 0)
-                throw new InvalidStackOperationException("empty stack!");
+        public static long[] popTimestampsAll(boolean timeRightOrder) throws InvalidStackOperationException {
+            assertStackAllocated();
 
-            values = new long[timestampsStackPointer];
+            long[] values;
 
-            if (timeRightOrder) {
-                for (int i = values.length - 1; i >= 0; i--) {
-                    values[i] = popTimestamp();
+            synchronized (timestampsStackLock) {
+                if (timestampsStackPointer == 0)
+                    throw new InvalidStackOperationException("empty stack!");
+
+                values = new long[timestampsStackPointer];
+
+                if (timeRightOrder) {
+                    for (int i = values.length - 1; i >= 0; i--) {
+                        values[i] = popTimestamp();
+                    }
+                } else {
+                    for (int i = 0; i < values.length; i++) {
+                        values[i] = popTimestamp();
+                    }
                 }
-            } else {
-                for (int i = 0; i < values.length; i++) {
-                    values[i] = popTimestamp();
+            }
+
+            return values;
+        }
+
+        private static void assertCaptureThreadRunning() {
+            if (timestampCaptureThread == null) {
+                timestampCaptureThread = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        assertStackAllocated();
+
+                        synchronized (threadRunningMonitor) {
+                            threadRunning = true;
+                            threadRunningMonitor.notifyAll();
+                        }
+
+                        while (true) {
+                            boolean interrupted = false;
+
+                            synchronized (captureThreadRunMonitor) {
+
+                                try {
+                                    captureThreadRunMonitor.wait();
+                                } catch (InterruptedException e) {
+                                    interrupted = true;
+                                }
+                            }
+
+                            if (!interrupted) {
+                                Long timestamp = lastReportedTimestamp;
+
+                                synchronized (timestampsStackLock) {
+                                    timestampsStack[timestampsStackPointer] = timestamp;
+                                    timestampsStackPointer++;
+                                }
+                            }
+                        }
+                    }
+                }, "framerate refresh thread");
+
+                timestampCaptureThread.start();
+
+                while (!threadRunning) {
+                    boolean running;
+
+                    synchronized (threadRunningMonitor) {
+                        running = threadRunning;
+                    }
+
+                    if (running) {
+                        break;
+                    } else {
+                        synchronized (threadRunningMonitor) {
+                            try {
+                                threadRunningMonitor.wait();
+                            } catch (InterruptedException e) {
+
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        return values;
-    }
+        public static void pushTimestamp() {
+            assertCaptureThreadRunning();
 
-    public static void pushTimestamp() {
-        long timestamp = System.nanoTime();
+            lastReportedTimestamp = System.nanoTime();
 
-        if (timestampCaptureThread == null) {
-            timestampCaptureThread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    while (true) {
-                        try {
-                            Thread.sleep(Long.MAX_VALUE);
-                        } catch (InterruptedException e) {
-
-                        }
-
-                        Long timestamp = System.nanoTime();
-
-                        synchronized (timestampsStackLock) {
-                            timestampsStack[timestampsStackPointer] = timestamp;
-                            timestampsStackPointer++;
-                        }
-                    }
-                }
-            }, "framerate refresh thread");
-
-            timestampCaptureThread.start();
+            synchronized (captureThreadRunMonitor) {
+                captureThreadRunMonitor.notifyAll();
+            }
         }
 
-        timestampCaptureThread.interrupt();
-    }
-
-    public static int getCurrentStackSize() {
-        int currentSize;
-        synchronized (timestampsStackLock) {
-            currentSize = timestampsStackPointer;
+        public static int getCurrentStackSize() {
+            int currentSize;
+            synchronized (timestampsStackLock) {
+                currentSize = timestampsStackPointer;
+            }
+            return currentSize;
         }
-        return currentSize;
-    }
 
-//    public static int getTimestampStackSize() {
-//        int size;
-//
-//        synchronized (timestampsStackLock) {
-//            size = timestampsStackPointer;
-//        }
-//
-//        return size;
-//    }
+    }
 }

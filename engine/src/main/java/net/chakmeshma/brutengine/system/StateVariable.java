@@ -27,10 +27,10 @@ public interface StateVariable {
     void commitChange();
 
     //region inner classes
-    public interface StateVariableMatcher {
+    interface StateVariableMatcher {
         boolean matches(StateVariable stateVariable);
 
-        public final class EqualityMatcher implements StateVariableMatcher
+        final class EqualityMatcher implements StateVariableMatcher
         {
             private String declaredDefinedTypeName;
             private String declaredDefinedName;
