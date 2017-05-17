@@ -90,7 +90,7 @@ class CustomRenderer implements Renderer {
     }
 
     private void initDrawables() throws InitializationException {
-        drawables = new Drawable[2];
+        drawables = new Drawable[1];
 
         Program brutProgram = new Program(context, "shader.vert", "shader.frag");
 
@@ -111,12 +111,12 @@ class CustomRenderer implements Renderer {
         mappingWithNormal.put("inputPosition", 0);
         mappingWithNormal.put("inputNormal", 1);
 
-        ObjFile[] objFiles = new ObjFile[2];
+        ObjFile[] objFiles = new ObjFile[1];
 
-        objFiles[0] = new ObjFile(context, "ico outersphere.obj");
-        objFiles[1] = new ObjFile(context, "ico.obj");
+        //objFiles[0] = new ObjFile(context, "ico outersphere.obj");
+        objFiles[0] = new ObjFile(context, "ico.obj");
 
-        Mesh[] meshes = new Mesh[2];
+        Mesh[] meshes = new Mesh[1];
 
         StepLoadListener meshStepLoadListener = new StepLoadListener() {
             @Override
@@ -132,10 +132,10 @@ class CustomRenderer implements Renderer {
 
         meshes[0] = new Mesh(objFiles[0], meshStepLoadListener);
 
-        meshes[1] = new Mesh(objFiles[1], meshStepLoadListener);
+//        meshes[1] = new Mesh(objFiles[1], meshStepLoadListener);
 
         drawables[0] = new SimpleDrawable(brutProgram, meshes[0], brutStateController, new AttributeBufferMapping(mappingWithNormal));
-        drawables[1] = new SimpleDrawable(brutProgram, meshes[1], brutStateController, new AttributeBufferMapping(mappingWithNormal));
+//        drawables[1] = new SimpleDrawable(brutProgram, meshes[1], brutStateController, new AttributeBufferMapping(mappingWithNormal));
 
         camera.zoomCamera(-4.0f);
     }

@@ -18,8 +18,8 @@
         android:id="@+id/debug2_textview"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_toRightOf="@id/debug_textview"
         android:layout_marginLeft="20px"
+        android:layout_toRightOf="@id/debug_textview"
         android:textColor="#FF0000"
         tools:text="60" />
 
@@ -35,8 +35,8 @@
             android:layout_height="150dp"
             android:layout_centerHorizontal="true"
             android:layout_centerVertical="true"
-            app:refHeight="0.3"
-            app:refWidth="0.3"
+            app:refPrcHeight="50.0"
+            app:refPrcWidth="50.0"
             app:srcCompat="@drawable/ic_abeille_ruche_bee" />
 
         <ProgressBar
@@ -52,9 +52,4 @@
             android:visibility="visible" />
 
     </RelativeLayout>
-    <!--<com.github.mikephil.charting.charts.BarChart-->
-    <!--android:id="@+id/zps_bar_char"-->
-    <!--android:layout_width="match_parent"-->
-    <!--android:layout_height="match_parent"-->
-    <!--android:background="@color/colorWhite" />-->
 </RelativeLayout>

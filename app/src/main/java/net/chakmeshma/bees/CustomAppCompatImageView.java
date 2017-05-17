@@ -26,12 +26,18 @@ public final class CustomAppCompatImageView extends AppCompatImageView {
         readCustomAttributes(context, attrs, 0);
     }
 
+    public CustomAppCompatImageView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+
+        readCustomAttributes(context, attrs, defStyleAttr);
+    }
+
     private void readCustomAttributes(Context context, AttributeSet attrs, int defStyleAttr) {
         TypedArray customAttributes = context.getTheme().obtainStyledAttributes(attrs, R.styleable.CustomAppCompatImageView, defStyleAttr, 0);
 
         try {
-            this.prcWidth = customAttributes.getFloat(R.styleable.CustomAppCompatImageView_refWidth, 0.0f);
-            this.prcHeight = customAttributes.getFloat(R.styleable.CustomAppCompatImageView_refHeight, 0.0f);
+            this.prcWidth = customAttributes.getFloat(R.styleable.CustomAppCompatImageView_refPrcWidth, 0.0f);
+            this.prcHeight = customAttributes.getFloat(R.styleable.CustomAppCompatImageView_refPrcHeight, 0.0f);
 
             prcDimensSet = true;
         } finally {
@@ -39,19 +45,19 @@ public final class CustomAppCompatImageView extends AppCompatImageView {
         }
     }
 
-    public CustomAppCompatImageView(Context context, AttributeSet attrs, int defStyleAttr) {
-        super(context, attrs, defStyleAttr);
-
-        readCustomAttributes(context, attrs, defStyleAttr);
-    }
-
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        if(this.prcDimensSet) {
-            float scaleReference = GameActivity.getScaleReferenceNumber();
+        if (this.prcDimensSet) {
+            float scaleReference;
 
-            float fTargetWidth = prcWidth * scaleReference;
-            float fTargetHeight = prcHeight * scaleReference;
+            if (!this.isInEditMode()) {
+                scaleReference = GameActivity.getScaleReferenceNumber();
+            } else {
+                scaleReference = 768;
+            }
+
+            float fTargetWidth = (prcWidth / 100.0f) * scaleReference;
+            float fTargetHeight = (prcHeight / 100.0f) * scaleReference;
 
             int targetWidth = Math.round(fTargetWidth);
             int targetHeight = Math.round(fTargetHeight);
@@ -66,7 +72,7 @@ public final class CustomAppCompatImageView extends AppCompatImageView {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        if(nextDrawCallback != null) {
+        if (nextDrawCallback != null) {
             nextDrawCallback.run();
 
             nextDrawCallback = null;

@@ -29,6 +29,7 @@ import net.chakmeshma.brutengine.development.DebugUtilities;
 import net.chakmeshma.brutengine.development.exceptions.InitializationException;
 import net.chakmeshma.brutengine.development.exceptions.InvalidOperationException;
 import net.chakmeshma.brutengine.development.exceptions.InvalidStackOperationException;
+import net.chakmeshma.brutengine.utilities.GeneralUtilities;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -74,24 +75,40 @@ public class GameActivity extends AppCompatActivity {
     private float lastChartX = 0.0f;
 
     //region dimensions and sizes
-    static int getWidth() {
+    static int getVerticalSize() {
         return clientSize.x;
     }
 
-    static int getHeight() {
+    static int getHorizontalSize() {
         return clientSize.y;
     }
 
-    static float getXYRatio() {
+    static int getSmallerSize() {
+        return Math.min(clientSize.x, clientSize.y);
+    }
+
+    static int getBiggerSize() {
+        return Math.max(clientSize.x, clientSize.y);
+    }
+
+    static int getSBRatio() {
+        return getSmallerSize() / getBiggerSize();
+    }
+
+    static int getBSRatio() {
+        return getBiggerSize() / getSmallerSize();
+    }
+
+    static float getVHRatio() {
         return clientSize.x / clientSize.y;
     }
 
-    static float getYXRatio() {
+    static float getHVRatio() {
         return clientSize.y / clientSize.x;
     }
 
     static float getScaleReferenceNumber() {
-        return 2.0f * getWidth() / 2.0f;
+        return getSmallerSize();
     }
     //endregion
 
@@ -196,7 +213,7 @@ public class GameActivity extends AppCompatActivity {
                             surfaceView = new CustomGLSurfaceView(GameActivity.this);
                             renderer = surfaceView.setupRenderer(GameActivity.this);
                             RelativeLayout.LayoutParams surfaceViewLayoutParams;
-                            surfaceViewLayoutParams = new RelativeLayout.LayoutParams(getWidth(), getHeight());
+                            surfaceViewLayoutParams = new RelativeLayout.LayoutParams(getVerticalSize(), getHorizontalSize());
                             surfaceViewLayoutParams.addRule(CENTER_IN_PARENT, TRUE);
                             surfaceView.setLayoutParams(surfaceViewLayoutParams);
                             root.addView(surfaceView, 0);
@@ -208,7 +225,11 @@ public class GameActivity extends AppCompatActivity {
                         }
                         break;
                     case MESSAGE_UPDATE_CHART_ENTRIES:
-                        updateChart();
+                        List<Object> fpsData = updateChart();
+
+                        if (fpsData != null) {
+                            sendMessageToUIThreadHandler(MESSAGE_UPDATE_FRAMERATE_TEXT, fpsData.toArray());
+                        }
                         break;
                     case MESSAGE_CLEAR_CHART_ENTRIES:
                         clearChart();
@@ -415,8 +436,8 @@ public class GameActivity extends AppCompatActivity {
     private void createFrameratesChart(boolean setVisible) {
         int availableWidth, availableHeight;
 
-        availableWidth = getWidth();
-        availableHeight = getHeight();
+        availableWidth = getVerticalSize();
+        availableHeight = getHorizontalSize();
 
         int chartWidth, chartHeight;
 
@@ -488,13 +509,13 @@ public class GameActivity extends AppCompatActivity {
         lastChartX = 0.0f;
     }
 
-    private boolean updateChart() {
+    private List<Object> updateChart() {
         if (isChartActive() && DebugUtilities.getCurrentStackSize() > 2) {
             long[] frameRates;
             try {
                 frameRates = DebugUtilities.popTimestampsAll(true);
             } catch (InvalidStackOperationException e) {
-                return false;
+                return null;
             }
 
             float x0 = (float) (0.0 / 1000_000.0);
@@ -551,29 +572,38 @@ public class GameActivity extends AppCompatActivity {
                 lineDataSet.setDrawCircles(false);
                 //lineDataSet.setDrawCircleHole(false);
 
+                IValueFormatter valueFormatter = new IValueFormatter() {
+                    @Override
+                    public String getFormattedValue(float value, Entry entry, int dataSetIndex, ViewPortHandler viewPortHandler) {
+                        if (value == 0.0f)
+                            return "";
+                        else
+                            return String.format("%dfps", Math.round(1000.0f / value));
+                    }
+                };
+
+
+//                float dpFontSize = GeneralUtilities.pxToDP(this, 0.01f * getScaleReferenceNumber(), true);
+                float dpFontSize = GeneralUtilities.pxToDp(this, Math.round(0.03f * getScaleReferenceNumber()));
+
+                lineDataSet.setValueFormatter(valueFormatter);
+
                 switch (i) {
                     case 0:
-                        lineDataSet.setColors(Color.parseColor("#00CC00"));
-                        lineDataSet.setDrawValues(false);
+                        lineDataSet.setColors(Color.parseColor("#7F00CC00"));
+                        lineDataSet.setValueTextColor(Color.parseColor("#7F00CC00"));
+                        lineDataSet.setValueTextSize(dpFontSize / 1.500f);
                         break;
                     case 1:
-                        lineDataSet.setColors(Color.parseColor("#000066"));
-                        lineDataSet.setDrawValues(false);
+                        lineDataSet.setColors(Color.parseColor("#BF000066"));
+                        lineDataSet.setValueTextColor(Color.parseColor("#BF000066"));
+                        lineDataSet.setValueTextSize(dpFontSize / 1.2247f);
                         break;
                     case 2:
                         lineDataSet.setColors(Color.parseColor("#FF0000"));
-                        lineDataSet.setDrawValues(true);
                         lineDataSet.setValueTextColor(Color.parseColor("#FF0000"));
-                        lineDataSet.setValueTextSize(GameActivity.getScaleReferenceNumber() / 100.0f);
-                        lineDataSet.setValueFormatter(new IValueFormatter() {
-                            @Override
-                            public String getFormattedValue(float value, Entry entry, int dataSetIndex, ViewPortHandler viewPortHandler) {
-                                if (value == 0.0f)
-                                    return "";
-                                else
-                                    return String.format("%dfps", Math.round(1000.0f / value));
-                            }
-                        });
+                        lineDataSet.setValueTextSize(dpFontSize);
+
                         break;
                 }
 
@@ -583,6 +613,7 @@ public class GameActivity extends AppCompatActivity {
             }
 
             LineData lineData = new LineData(Arrays.<ILineDataSet>asList(lineDataSets));
+            lineData.setDrawValues(true);
 
             chart.setData(lineData);
 
@@ -593,14 +624,20 @@ public class GameActivity extends AppCompatActivity {
 
             chart.invalidate();
 
-            return true;
+            List<Object> outputList = new ArrayList<>();
+
+            outputList.add((long) Math.round(1000.0f / min));
+            outputList.add((long) Math.round(1000.0f / mean));
+            outputList.add((long) Math.round(1000.0f / max));
+
+            return outputList;
         } else
-            return false;
+            return null;
     }
 
     private Thread obtainChartThread() {
         return new Thread(new Runnable() {
-            private long msSleepInterval = 2000L;
+            private long msSleepInterval = 700L;
 
             @Override
             public void run() {
