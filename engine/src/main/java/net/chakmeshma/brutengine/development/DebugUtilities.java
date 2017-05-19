@@ -48,6 +48,29 @@ public final class DebugUtilities {
     }
     //endregion
 
+    //region forceSleep
+    public static void forceSleep(long nWaitTime) {
+        long nRemainingTime = nWaitTime;
+
+        if (nWaitTime <= 0)
+            return;
+
+        do {
+            long lastSleepStartTimestamp = System.nanoTime();
+
+            try {
+                long millis = Math.round(((double) nRemainingTime) / 1000_000.0);
+                int nanos = (int) (nRemainingTime - (millis * 1000_000));
+
+                Thread.sleep(millis, nanos);
+            } catch (InterruptedException e) {
+            }
+
+            nRemainingTime -= System.nanoTime() - lastSleepStartTimestamp;
+        } while (nRemainingTime > 0);
+    }
+    //endregion
+
     //region logWarning
     public static void logWarning(String warningMessage) {
         Log.w(warningTag, warningMessage);
@@ -60,8 +83,8 @@ public final class DebugUtilities {
 
     public final static class FramerateCapture {
         private static final Object timestampsStackLock = new Object();
-        private static final Object threadRunningMonitor = new Object();
-        private static final Object captureThreadRunMonitor = new Object();
+        private static final Object threadRunning_Monitor = new Object();
+        private static final Object captureThreadBlocker_Monitor = new Object();
         private static final int stackCapacity = 10240;
         private static long[] timestampsStack;
         private static int timestampsStackPointer = 0;
@@ -128,18 +151,18 @@ public final class DebugUtilities {
                     public void run() {
                         assertStackAllocated();
 
-                        synchronized (threadRunningMonitor) {
+                        synchronized (threadRunning_Monitor) {
                             threadRunning = true;
-                            threadRunningMonitor.notifyAll();
+                            threadRunning_Monitor.notifyAll();
                         }
 
                         while (true) {
                             boolean interrupted = false;
 
-                            synchronized (captureThreadRunMonitor) {
+                            synchronized (captureThreadBlocker_Monitor) {
 
                                 try {
-                                    captureThreadRunMonitor.wait();
+                                    captureThreadBlocker_Monitor.wait();
                                 } catch (InterruptedException e) {
                                     interrupted = true;
                                 }
@@ -159,19 +182,19 @@ public final class DebugUtilities {
 
                 timestampCaptureThread.start();
 
-                while (!threadRunning) {
+                while (true) {
                     boolean running;
 
-                    synchronized (threadRunningMonitor) {
+                    synchronized (threadRunning_Monitor) {
                         running = threadRunning;
                     }
 
                     if (running) {
                         break;
                     } else {
-                        synchronized (threadRunningMonitor) {
+                        synchronized (threadRunning_Monitor) {
                             try {
-                                threadRunningMonitor.wait();
+                                threadRunning_Monitor.wait();
                             } catch (InterruptedException e) {
 
                             }
@@ -186,8 +209,8 @@ public final class DebugUtilities {
 
             lastReportedTimestamp = System.nanoTime();
 
-            synchronized (captureThreadRunMonitor) {
-                captureThreadRunMonitor.notifyAll();
+            synchronized (captureThreadBlocker_Monitor) {
+                captureThreadBlocker_Monitor.notifyAll();
             }
         }
 
@@ -200,4 +223,68 @@ public final class DebugUtilities {
         }
 
     }
+
+    public static class Occupy {
+        public static int occupyCPU(Long msOccupyTime) {
+            long startTime = System.nanoTime();
+
+            long sum = 0;
+
+            while (true) {
+                if (System.nanoTime() - startTime > (msOccupyTime * 1000_000L))
+                    break;
+
+                for (int i = 0; i < 10000; i++) {
+                    sum++;
+                }
+            }
+
+            return (int) (sum % Integer.MAX_VALUE + 1);
+        }
+    }
+
+    //region SinStack
+    public static class SinStack {
+        public static void drawCurve(float radius, int resolution, float sTotalWaitTime, int cycles) {
+            float cycleWaitTime = sTotalWaitTime / cycles;
+
+            float partAngle = (float) (Math.PI / resolution);
+            float partWidth = cycleWaitTime / resolution;
+
+            for (int i = 0; i < resolution * cycles; i++) {
+                float angleLow = partAngle * i;
+                float angleHigh = partAngle * (i + 1);
+                float heightLow = (float) Math.sin(angleLow) * radius;
+                float heightHigh = (float) Math.sin(angleHigh) * radius;
+                float height = (heightLow + heightHigh) / 2.0f;
+
+                drawSegment(radius - height, partWidth);
+            }
+        }
+
+        private static void drawSegment(float height, float width) {
+            if (width <= 0.0f || height < 0.0f)
+                return;
+
+            int depth = Math.round(height);
+            long nWaitTime = (long) (1000_000_000L * width);
+
+            if (depth == 0) {
+                forceSleep(nWaitTime);
+            } else {
+                recursiveStackTreeFunction(1, depth, nWaitTime);
+            }
+        }
+
+        private static int recursiveStackTreeFunction(int depth, int maxDepth, long waitTime) {
+            if (depth == maxDepth) {
+                forceSleep(waitTime);
+
+                return 1;
+            } else {
+                return recursiveStackTreeFunction(depth + 1, maxDepth, waitTime);
+            }
+        }
+    }
+    //endregion
 }

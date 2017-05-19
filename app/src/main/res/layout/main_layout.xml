@@ -10,6 +10,7 @@
         android:id="@+id/debug_textview"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:background="@color/colorDebugBackground"
         android:text=""
         android:textColor="#FF0000"
         tools:text="60" />
@@ -18,8 +19,8 @@
         android:id="@+id/debug2_textview"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginLeft="20px"
-        android:layout_toRightOf="@id/debug_textview"
+        android:layout_alignParentRight="true"
+        android:background="@color/colorDebugBackground"
         android:textColor="#FF0000"
         tools:text="60" />
 

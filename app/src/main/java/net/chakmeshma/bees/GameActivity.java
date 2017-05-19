@@ -18,6 +18,8 @@ import android.widget.RelativeLayout;
 import com.github.mikephil.charting.charts.Chart;
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.Description;
+import com.github.mikephil.charting.components.XAxis;
+import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
@@ -27,7 +29,6 @@ import com.github.mikephil.charting.utils.ViewPortHandler;
 
 import net.chakmeshma.brutengine.development.DebugUtilities;
 import net.chakmeshma.brutengine.development.exceptions.InitializationException;
-import net.chakmeshma.brutengine.development.exceptions.InvalidOperationException;
 import net.chakmeshma.brutengine.development.exceptions.InvalidStackOperationException;
 import net.chakmeshma.brutengine.utilities.GeneralUtilities;
 
@@ -37,6 +38,8 @@ import java.util.List;
 
 import static android.widget.RelativeLayout.CENTER_IN_PARENT;
 import static android.widget.RelativeLayout.TRUE;
+import static net.chakmeshma.brutengine.development.DebugUtilities.FramerateCapture.getCurrentStackSize;
+import static net.chakmeshma.brutengine.development.DebugUtilities.FramerateCapture.popTimestampsAll;
 
 public class GameActivity extends AppCompatActivity {
     public static final int MESSAGE_PART_LOADED = 0x00;
@@ -45,14 +48,15 @@ public class GameActivity extends AppCompatActivity {
     public static final int MESSAGE_BEGIN_INITIALIZATION = 0x03;
     public static final int MESSAGE_UPDATE_FRAMERATE_TEXT = 0x04;
     public static final int MESSAGE_UPDATE_TOTAL_FRAMERATE_TEXT = 0x05;
-    public static final int MESSAGE_UPDATE_CHART_ENTRIES = 0x06;
     public static final int MESSAGE_CLEAR_CHART_ENTRIES = 0x07;
+    public static final int MESSAGE_UPDATE_CHART = 0x08;
     private static final String MESSAGE_UPDATE_FRAMERATE_TEXT_DATA_KEY = "net.chakmeshma.bees.FRAMERATE_TEXT";
-    private static final int prcChartPadding = 1;
+    private static final int prcChartPadding = 0;
     private static int LOAD_PART_COUNT = 1;
     private static volatile int numGLFlushes = 0;
     private static Handler uiThreadHandler;
     private static Point clientSize = null;
+    private static long[] chartBuffer;
     private AppCompatTextView debugTextView;
     private AppCompatTextView debug2TextView;
     private CustomGLSurfaceView surfaceView;
@@ -67,7 +71,6 @@ public class GameActivity extends AppCompatActivity {
     private boolean initializationEnded = false;
     private long lastBackDoublePressedTimestamp = 0;
     private boolean _chartActive = false;
-    private Thread chartThread;
     private boolean _chartLoaded = false;
     private volatile List<Entry> maxChartEntries;
     private volatile List<Entry> meanChartEntries;
@@ -224,16 +227,15 @@ public class GameActivity extends AppCompatActivity {
                             throw new RuntimeException(e);
                         }
                         break;
-                    case MESSAGE_UPDATE_CHART_ENTRIES:
-                        List<Object> fpsData = updateChart();
-
-                        if (fpsData != null) {
-                            sendMessageToUIThreadHandler(MESSAGE_UPDATE_FRAMERATE_TEXT, fpsData.toArray());
-                        }
-                        break;
                     case MESSAGE_CLEAR_CHART_ENTRIES:
                         clearChart();
                         break;
+
+                    case MESSAGE_UPDATE_CHART:
+                        if (chartBuffer != null) {
+                            updateChart(chartBuffer);
+                            chartBuffer = null;
+                        }
                 }
             }
 
@@ -268,7 +270,7 @@ public class GameActivity extends AppCompatActivity {
         debug2TextView = (AppCompatTextView) findViewById(R.id.debug2_textview);
 
         initLoadingWaiterThread().start();
-//        initFramerateDebugTextViewerThread().start();
+        initDebugThread().start();
     }
 
     private Thread initLoadingWaiterThread() {
@@ -293,84 +295,94 @@ public class GameActivity extends AppCompatActivity {
         return loaderThread;
     }
 
-    private Thread initFramerateDebugTextViewerThread() {
-        Thread theThread = new Thread(new Runnable() {
-            long msRefreshFramerateTextInterval = 1000L;
-            long totalMean, totalMin, totalMax, totalSum, totalCount = 0;
+    private Thread initDebugThread() {
+        Thread debugThread = new Thread(new Runnable() {
+            long msRefreshFramerateTextInterval = 1000L;                                            //
+            long totalMean, totalMin, totalMax, totalSum, totalCount = 0;                           // SAFE TO DO BECAUSE THE THREAD IS NOT USABLE AFTER TERMINATION (AND GETS GCOLLECTED)
 
             @Override
             public void run() {
                 while (true) {
+                    //region [dumping the whole stack and saving it in chartBuffer (not synchronized)]
                     try {
                         Thread.sleep(msRefreshFramerateTextInterval);
                     } catch (InterruptedException e) {
 
                     }
 
+                    if (getCurrentStackSize() < 2)
+                        continue;
+
+                    long[] framerates = null;
+
                     try {
-                        long[] framerates = DebugUtilities.popTimestampsAll(true);
-
-                        if (framerates.length < 2)
-                            throw new InvalidOperationException("not enough framerates to update debug text!");
-
-                        long min = 0, mean, max = 0, sum = 0;
-
-                        int fpsCount = 0;
-
-                        for (int i = 1; i < framerates.length; i++) {
-                            int fps = (int) Math.round(1000_000_000.0 / ((double) (framerates[i] - framerates[i - 1])));
-
-                            if (i == 1) {
-                                min = fps;
-                                max = fps;
-                                sum = fps;
-
-                                fpsCount++;
-                            } else {
-                                if (fps < min)
-                                    min = fps;
-                                if (fps > max)
-                                    max = fps;
-                                sum += fps;
-
-                                fpsCount++;
-                            }
-                        }
-
-                        mean = Math.round(((double) sum) / ((double) fpsCount));
-
-                        if (totalCount == 0) {
-                            totalCount = fpsCount;
-                            totalSum = sum;
-
-                            totalMin = min;
-                            totalMean = mean;
-                            totalMax = max;
-                        } else {
-                            totalCount += fpsCount;
-                            totalSum += sum;
-
-                            if (min < totalMin)
-                                totalMin = min;
-
-                            totalMean = Math.round(((double) totalSum) / ((double) totalCount));
-
-                            if (max > totalMax) {
-                                totalMax = max;
-                            }
-                        }
-
-                        sendMessageToUIThreadHandler(MESSAGE_UPDATE_FRAMERATE_TEXT, new Long[]{max, mean, min});
-                        sendMessageToUIThreadHandler(MESSAGE_UPDATE_TOTAL_FRAMERATE_TEXT, new Long[]{totalMax, totalMean, totalMin});
-                    } catch (InvalidOperationException e) {
-                        sendMessageToUIThreadHandler(MESSAGE_UPDATE_FRAMERATE_TEXT, new Long[]{0L, 0L, 0L});
+                        framerates = popTimestampsAll(true);
+                    } catch (InvalidStackOperationException e) {
+                        continue;
                     }
+
+                    if (isChartActive()) {
+                        GameActivity.chartBuffer = Arrays.copyOf(framerates, framerates.length);
+                        sendMessageToUIThreadHandler(MESSAGE_UPDATE_CHART);
+                    }
+                    //endregion
+
+                    long min = 0, mean = 0, max = 0, sum = 0;
+
+                    int fpsCount = 0;
+
+                    for (int i = 1; i < framerates.length; i++) {
+                        int fps = (int) Math.round(1000_000_000.0 / ((double) (framerates[i] - framerates[i - 1])));
+
+                        if (i == 1) {
+                            min = fps;
+                            max = fps;
+                            sum = fps;
+
+                            fpsCount++;
+                        } else {
+                            if (fps < min)
+                                min = fps;
+                            if (fps > max)
+                                max = fps;
+                            sum += fps;
+
+                            fpsCount++;
+                        }
+                    }
+
+                    mean = Math.round(((double) sum) / ((double) fpsCount));
+
+                    if (totalCount == 0) {
+                        totalCount = fpsCount;
+                        totalSum = sum;
+
+                        totalMin = min;
+                        totalMean = mean;
+                        totalMax = max;
+                    } else {
+                        totalCount += fpsCount;
+                        totalSum += sum;
+
+                        if (min < totalMin)
+                            totalMin = min;
+
+                        totalMean = Math.round(((double) totalSum) / ((double) totalCount));
+
+                        if (max > totalMax) {
+                            totalMax = max;
+                        }
+                    }
+
+                    sendMessageToUIThreadHandler(MESSAGE_UPDATE_FRAMERATE_TEXT, new Long[]{max, mean, min});
+                    sendMessageToUIThreadHandler(MESSAGE_UPDATE_TOTAL_FRAMERATE_TEXT, new Long[]{totalMax, totalMean, totalMin});
                 }
 
+                //return
             }
         }, "loader thread");
 
-        return theThread;
+        return debugThread;
     }
     //endregion
 
@@ -447,22 +459,24 @@ public class GameActivity extends AppCompatActivity {
         chartHeight = availableHeight - padding;
 
         chart = new LineChart(GameActivity.this);
-        chart.setHardwareAccelerationEnabled(false);
+        chart.setHardwareAccelerationEnabled(true);
         RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(chartWidth, chartHeight);
         layoutParams.addRule(CENTER_IN_PARENT, TRUE);
         chart.setLayoutParams(layoutParams);
-        chart.setBackgroundColor(Color.parseColor("#77FFFFFF"));
-//        XAxis xAxis = chart.getXAxis();
-//        YAxis yAxisLeft = chart.getAxisLeft();
-//        YAxis yAxisRight = chart.getAxisRight();
-//        xAxis.setEnabled(false);
-//        yAxisLeft.setAxisMinimum(0.0f);
-//        yAxisRight.setAxisMinimum(0.0f);
-//        yAxisLeft.setAxisMaximum(1500.0f);
-//        yAxisRight.setAxisMaximum(1500.0f);
-//        xAxis.setAxisMinimum(0.0f);
+        XAxis xAxis = chart.getXAxis();
+        xAxis.setEnabled(false);
+        YAxis yAxisLeft = chart.getAxisLeft();
+        YAxis yAxisRight = chart.getAxisRight();
+        yAxisLeft.setAxisMinimum(0.0f);
+        yAxisRight.setAxisMinimum(0.0f);
+        yAxisLeft.setAxisMaximum(1000.0f / 30.0f);
+        yAxisRight.setAxisMaximum(1000.0f / 30.0f);
         Description chartDescription = new Description();
         chartDescription.setEnabled(false);
+
+        chart.setVisibleYRange(0.0f, 1000.0f / 30.0f, YAxis.AxisDependency.LEFT);
+        chart.setVisibleYRange(0.0f, 1000.0f / 30.0f, YAxis.AxisDependency.RIGHT);
+
         chart.setDoubleTapToZoomEnabled(false);
         chart.setDescription(chartDescription);
         chart.setNoDataTextColor(Color.parseColor("#FF0000"));
@@ -472,7 +486,9 @@ public class GameActivity extends AppCompatActivity {
         else
             chart.setVisibility(View.GONE);
 
-        root.addView(chart);
+        chart.setBackgroundResource(R.color.colorFramesChartBackground);
+
+        root.addView(chart, root.indexOfChild(debug2TextView) - 1);
     }
 
     private boolean isChartActive() {
@@ -485,17 +501,14 @@ public class GameActivity extends AppCompatActivity {
                 loadChart(true);
             } else {
                 chart.setVisibility(View.VISIBLE);
-                chartThread = obtainChartThread();
-                chartThread.start();
                 this._chartActive = true;
             }
         } else {
             if (!isChartLoaded()) {
                 //ignore
             } else {
-                killChartThread();
-                chart.setVisibility(View.GONE);
                 this._chartActive = false;
+                chart.setVisibility(View.GONE);
             }
         }
     }
@@ -509,15 +522,8 @@ public class GameActivity extends AppCompatActivity {
         lastChartX = 0.0f;
     }
 
-    private List<Object> updateChart() {
-        if (isChartActive() && DebugUtilities.getCurrentStackSize() > 2) {
-            long[] frameRates;
-            try {
-                frameRates = DebugUtilities.popTimestampsAll(true);
-            } catch (InvalidStackOperationException e) {
-                return null;
-            }
-
+    private void updateChart(long[] frameRates) {
+        if (isChartLoaded()) {
             float x0 = (float) (0.0 / 1000_000.0);
 
             float totalElapsed = 0.0f;
@@ -629,45 +635,18 @@ public class GameActivity extends AppCompatActivity {
             outputList.add((long) Math.round(1000.0f / min));
             outputList.add((long) Math.round(1000.0f / mean));
             outputList.add((long) Math.round(1000.0f / max));
-
-            return outputList;
-        } else
-            return null;
-    }
-
-    private Thread obtainChartThread() {
-        return new Thread(new Runnable() {
-            private long msSleepInterval = 700L;
-
-            @Override
-            public void run() {
-                sendMessageToUIThreadHandler(MESSAGE_CLEAR_CHART_ENTRIES);
-
-                try {
-                    while (true) {
-                        Thread.sleep(msSleepInterval);
-
-                        sendMessageToUIThreadHandler(MESSAGE_UPDATE_CHART_ENTRIES);
-                    }
-                } catch (InterruptedException e) {
-
-                }
-
-            }
-        }, "chart thread");
+        }
     }
 
     public void loadChart(boolean setActive) {
-        if (chart == null || chartThread == null ||
+        if (chart == null ||
                 minChartEntries == null || meanChartEntries == null || maxChartEntries == null) {
             maxChartEntries = new ArrayList<>();
             meanChartEntries = new ArrayList<>();
             minChartEntries = new ArrayList<>();
             createFrameratesChart(setActive);
-            this.chartThread = obtainChartThread();
             if (setActive) {
                 this._chartActive = true;
-                chartThread.start();
             }
         }
 
@@ -691,7 +670,7 @@ public class GameActivity extends AppCompatActivity {
 
         chart = null;
 
-        killChartThread();
+        setChartActive(false);
 
         clearChart();
 
@@ -703,19 +682,19 @@ public class GameActivity extends AppCompatActivity {
         this._chartActive = false;
     }
 
-    private void killChartThread() {
-        boolean threadKilled = false;
-
-        while (!threadKilled) {
-            try {
-                chartThread.interrupt();
-                chartThread.join();
-                threadKilled = true;
-            } catch (InterruptedException e) {
-
-            }
-        }
-    }
+//    private void killChartThread() {
+//        //        boolean threadKilled = false;
+////
+////        while (!threadKilled) {
+////            try {
+////                chartThread.interrupt();
+////                chartThread.join();
+////                threadKilled = true;
+////            } catch (InterruptedException e) {
+////
+////            }
+////        }
+//    }
 
     boolean isChartLoaded() {
         return this._chartLoaded;

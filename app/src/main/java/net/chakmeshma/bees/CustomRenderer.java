@@ -47,6 +47,7 @@ import static android.opengl.GLES20.glViewport;
 import static net.chakmeshma.bees.GameActivity.MESSAGE_EXTEND_LOAD_PARTS_COUNT;
 import static net.chakmeshma.bees.GameActivity.MESSAGE_PART_LOADED;
 import static net.chakmeshma.bees.GameActivity.sendMessageToUIThreadHandler;
+import static net.chakmeshma.brutengine.development.DebugUtilities.FramerateCapture.pushTimestamp;
 
 
 class CustomRenderer implements Renderer {
@@ -206,7 +207,7 @@ class CustomRenderer implements Renderer {
 
             glFlush();
             GameActivity.incrementCountGLFlushes();
-            DebugUtilities.pushTimestamp();
+            pushTimestamp();
         } else {
 //            DebugUtilities.logWarning("nothing to draw!");
         }

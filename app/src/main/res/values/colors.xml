@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="colorLoadingBackground">#484848</color>
+    <color name="colorDebugBackground">#33FFFFFF</color>
+    <color name="colorFramesChartBackground">#33FFFFFF</color>
 </resources>
